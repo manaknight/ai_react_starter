@@ -57,7 +57,7 @@ src/
 │  │  ├─ endpoints.ts      # url endpoints
 │  │  └─ adapters.ts       # transform api requests
 │  ├─ mock/
-│  │  └─ index.ts
+│  │  └─ index.ts          # Mock data (arrays/objects)
 │  └─ index.ts
 ├─ types/                  # Global types
 │  └─ api.ts
@@ -68,9 +68,10 @@ src/
 
 1. **Define Stable Domain Types** (Never change these)
 2. **Create Service Interface** (Single contract)
-3. **Mock Implementation** (Use during development)
-4. **Real API Implementation** (Same interface)
-5. **Runtime Service Switch** (One env flag: `VITE_USE_MOCK`)
+3. **Mock Data** (In `src/services/mock/`, export arrays/objects)
+4. **Mock Service Implementation** (In `src/modules/<feature>/services/`, implements interface using mock data)
+5. **Real API Implementation** (Same interface)
+6. **Runtime Service Switch** (One env flag: `VITE_USE_MOCK`)
 
 ## Component Guidelines
 
@@ -181,7 +182,7 @@ src/modules/users/
 │  └─ useUserForm.ts    # Form logic + userService
 ├─ services/
 │  ├─ UserService.ts    # Interface
-│  ├─ user.mock.ts      # Mock implementation
+│  ├─ user.mock.ts      # Mock service implementation (uses global mock data)
 │  └─ user.api.ts       # Real API implementation
 ├─ types.ts             # User, UserRole, etc.
 └─ index.ts             # export { UsersPage, useUsers, UserTable, ... }

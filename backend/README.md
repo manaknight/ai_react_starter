@@ -1,206 +1,483 @@
-# M&A Club Backend
+# Backend
 
-Express.js backend API for the M&A Club platform.
+This is a Node.js/Express backend API with MySQL database, built with security and scalability in mind.
 
-## Features
+## Architecture Overview
 
-- **Authentication & Authorization**: JWT-based auth with role-based access control (Member, Admin, Support)
-- **Database**: MySQL database with connection pooling
-- **Security**: Helmet, CORS, rate limiting, input validation
-- **API Structure**: RESTful API endpoints for all platform features
-- **Middleware**: Authentication, role checking, premium feature access control
+The backend follows a modular architecture with:
+- **Express.js** server with middleware for security, CORS, rate limiting
+- **MySQL** database with connection pooling
+- **JWT** authentication with role-based access control
+- **Database Service** layer providing ORM-like functionality
+- **Modular routing** system
+- **Service layer** for business logic
 
-## Quick Start
+## How to Install
 
 ### Prerequisites
-
 - Node.js (v16 or higher)
 - MySQL database
 - npm or yarn
 
-### Installation
+### Installation Steps
 
 1. **Navigate to backend directory:**
-   ```bash
-   cd backend
-   ```
+```bash
+cd backend
+```
 
 2. **Install dependencies:**
-   ```bash
-   npm install
-   ```
+```bash
+npm install
+```
 
 3. **Set up environment variables:**
-   ```bash
-   cp env.example .env
-   ```
+```bash
+cp env.example .env
+```
 
-   Edit `.env` with your configuration:
-   ```env
-   PORT=3001
-   DB_HOST=localhost
-   DB_USER=your_db_user
-   DB_PASSWORD=your_db_password
-   DB_NAME=manda_club
-   JWT_SECRET=your_jwt_secret_key
-   ```
+4. **Configure your `.env` file:**
+```env
+# Server Configuration
+PORT=3001
+NODE_ENV=development
 
-4. **Set up the database:**
-   - Create a MySQL database named `manda_club`
-   - Run the SQL schema from `../requirements/mandasql.sql`
+# Frontend URL for CORS
+FRONTEND_URL=http://localhost:5173
 
-5. **Start the development server:**
-   ```bash
-   npm run dev
-   ```
+# Database Configuration
+DB_HOST=localhost
+DB_USER=root
+DB_PASSWORD=your_password_here
+DB_NAME=manda_club
+DB_PORT=3306
 
-The server will start on `http://localhost:3001`
+# JWT Configuration
+JWT_SECRET=your_super_secret_jwt_key_here
+JWT_EXPIRES_IN=7d
+
+# Other Configuration
+ENCRYPTION_KEY=your_32_character_encryption_key
+```
+
+5. **Set up the database:**
+```bash
+# Run the database migration script
+node run-sql.js
+```
+
+6. **Start the server:**
+```bash
+# Development mode (with auto-restart)
+npm run dev
+
+# Production mode
+npm start
+
+# Test mode
+npm test
+```
+
+The server will start on `http://localhost:3001` with a health check endpoint at `/health`.
+
+## How to Add New Routes
+
+### Route Structure
+Routes are organized in the `routes/` directory. Each route file exports an Express router.
+
+### Example: Creating a new route file
+
+1. **Create a new route file** (e.g., `routes/products.js`):
+```javascript
+const express = require('express');
+const { body, validationResult } = require('express-validator');
+const DatabaseService = require('../services/DatabaseService');
+const auth = require('../middleware/auth');
+
+const router = express.Router();
+
+// GET /api/products - Get all products (public)
+router.get('/', async (req, res) => {
+  try {
+    const products = await DatabaseService.find('products');
+    res.json(products);
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to fetch products',
+      message: error.message
+    });
+  }
+});
+
+// POST /api/products - Create new product (authenticated users only)
+router.post('/', auth.verifyToken, [
+  body('name').trim().isLength({ min: 1 }),
+  body('price').isNumeric()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        error: 'Validation failed',
+        details: errors.array()
+      });
+    }
+
+    const { name, price, description } = req.body;
+
+    const result = await DatabaseService.insert('products', {
+      name,
+      price,
+      description,
+      created_by: req.user.id
+    });
+
+    res.status(201).json(result);
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to create product',
+      message: error.message
+    });
+  }
+});
+
+// PUT /api/products/:id - Update product (admin only)
+router.put('/:id', auth.requireAdmin, [
+  body('name').optional().trim().isLength({ min: 1 }),
+  body('price').optional().isNumeric()
+], async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+
+    const result = await DatabaseService.update('products', updates, {
+      where: { id }
+    });
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        error: 'Product not found'
+      });
+    }
+
+    res.json({ message: 'Product updated successfully' });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to update product',
+      message: error.message
+    });
+  }
+});
+
+module.exports = router;
+```
+
+2. **Register the route in `server.js`:**
+```javascript
+// In server.js, add after the auth routes import:
+// const productRoutes = require('./routes/products');
+
+// And add to the API routes section:
+// app.use('/api/products', productRoutes);
+```
+
+### Route Best Practices
+- Use Express Validator for input validation
+- Include proper error handling with try/catch blocks
+- Use authentication middleware when needed
+- Return consistent JSON response formats
+- Use HTTP status codes appropriately
+
+## How to Add New Services
+
+### Service Structure
+Services are organized in the `services/` directory. Each service is a module that exports an object with methods.
+
+### Example: Creating a new service
+
+1. **Create a new service file** (e.g., `services/ProductService.js`):
+```javascript
+const DatabaseService = require('./DatabaseService');
+
+/**
+ * Product Service
+ * Handles business logic for product operations
+ */
+const ProductService = {
+  /**
+   * Get all products with optional filtering
+   * @param {Object} options - Query options
+   * @returns {Promise<Array>} - Array of products
+   */
+  async getProducts(options = {}) {
+    const { category, minPrice, maxPrice, limit = 20, offset = 0 } = options;
+
+    let where = {};
+
+    if (category) {
+      where.category = category;
+    }
+
+    if (minPrice !== undefined || maxPrice !== undefined) {
+      where.price = {};
+      if (minPrice !== undefined) {
+        where.price.operator = '>=';
+        where.price.value = minPrice;
+      }
+      if (maxPrice !== undefined) {
+        where.price = where.price || {};
+        where.price.operator = '<=';
+        where.price.value = maxPrice;
+      }
+    }
+
+    return await DatabaseService.find('products', {
+      where,
+      orderBy: { created_at: 'DESC' },
+      limit,
+      offset
+    });
+  },
+
+  /**
+   * Get product by ID with related data
+   * @param {number} productId - Product ID
+   * @returns {Promise<Object|null>} - Product object or null
+   */
+  async getProductById(productId) {
+    const products = await DatabaseService.find('products', {
+      where: { id: productId },
+      limit: 1
+    });
+
+    return products[0] || null;
+  },
+
+  /**
+   * Create a new product
+   * @param {Object} productData - Product data
+   * @param {number} userId - User creating the product
+   * @returns {Promise<Object>} - Created product
+   */
+  async createProduct(productData, userId) {
+    // Validate business rules
+    if (productData.price <= 0) {
+      throw new Error('Product price must be greater than 0');
+    }
+
+    // Add audit fields
+    const productWithAudit = {
+      ...productData,
+      created_by: userId,
+      created_at: new Date(),
+      updated_at: new Date()
+    };
+
+    return await DatabaseService.insert('products', productWithAudit);
+  },
+
+  /**
+   * Update product
+   * @param {number} productId - Product ID
+   * @param {Object} updates - Fields to update
+   * @returns {Promise<Object>} - Update result
+   */
+  async updateProduct(productId, updates) {
+    // Add updated timestamp
+    updates.updated_at = new Date();
+
+    return await DatabaseService.update('products', updates, {
+      where: { id: productId }
+    });
+  },
+
+  /**
+   * Delete product (soft delete)
+   * @param {number} productId - Product ID
+   * @returns {Promise<Object>} - Delete result
+   */
+  async deleteProduct(productId) {
+    return await DatabaseService.update('products', {
+      deleted_at: new Date(),
+      status: 'deleted'
+    }, {
+      where: { id: productId }
+    });
+  },
+
+  /**
+   * Get product statistics
+   * @returns {Promise<Object>} - Statistics object
+   */
+  async getProductStats() {
+    const [totalProducts] = await DatabaseService.query(
+      'SELECT COUNT(*) as count FROM products WHERE deleted_at IS NULL'
+    );
+
+    const [avgPrice] = await DatabaseService.query(
+      'SELECT AVG(price) as average FROM products WHERE deleted_at IS NULL AND price > 0'
+    );
+
+    return {
+      totalProducts: totalProducts.count,
+      averagePrice: avgPrice.average || 0
+    };
+  }
+};
+
+module.exports = ProductService;
+```
+
+2. **Use the service in routes:**
+```javascript
+const ProductService = require('../services/ProductService');
+
+// In your route handler:
+router.get('/', async (req, res) => {
+  try {
+    const products = await ProductService.getProducts(req.query);
+    res.json(products);
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to fetch products',
+      message: error.message
+    });
+  }
+});
+```
+
+### Service Best Practices
+- Keep business logic separate from route handlers
+- Validate data and enforce business rules
+- Handle errors appropriately
+- Use transactions for multi-step operations
+- Include audit trails (created_by, updated_at, etc.)
+
+## How to Migrate Database
+
+### Using the SQL Runner
+
+The backend includes a `run-sql.js` script for executing SQL migrations:
+
+```bash
+# Run migrations from requirements/mandasql_clean.sql
+node run-sql.js
+```
+
+### Creating New Migrations
+
+1. **Create SQL file** in `requirements/` directory with your schema changes:
+```sql
+-- Add new table
+CREATE TABLE products (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  price DECIMAL(10,2) NOT NULL,
+  category VARCHAR(100),
+  created_by BIGINT UNSIGNED,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deleted_at TIMESTAMP NULL,
+  status ENUM('active', 'deleted') DEFAULT 'active',
+  FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+-- Add indexes for performance
+CREATE INDEX idx_products_category ON products(category);
+CREATE INDEX idx_products_status ON products(status);
+CREATE INDEX idx_products_created_at ON products(created_at);
+```
+
+2. **Run the migration:**
+```bash
+node run-sql.js
+```
+
+### Manual Migration (Alternative)
+
+You can also run SQL directly in your MySQL client or use migration tools like Flyway.
+
+### Migration Best Practices
+- Always backup your database before migrations
+- Test migrations on development environment first
+- Use descriptive names for migration files
+- Include rollback scripts when possible
+- Version control your SQL schema files
+
+## Key Components
+
+### Database Service
+The `DatabaseService` provides ORM-like functionality with:
+- Connection pooling and security
+- Query building with sanitization
+- Transaction support
+- Pagination and filtering
+- Decimal precision handling
+
+### Authentication & Authorization
+- JWT-based authentication
+- Role-based access control (Member, Admin, Support)
+- Password hashing with bcrypt
+- Password reset functionality
+
+### Middleware
+- **auth.js**: Token verification and role checking
+- **capability.js**: Permission-based access control
+- Security headers via Helmet
+- Rate limiting
+- CORS configuration
+
+### Database Schema
+Current tables include:
+- `users`: User accounts and authentication
+- `user_profiles`: Extended user information
+- `password_reset_tokens`: Password reset functionality
+
+## Development Commands
+
+```bash
+# Start development server
+npm run dev
+
+# Start production server
+npm start
+
+# Run tests
+npm test
+
+# Run database migrations
+node run-sql.js
+```
 
 ## API Endpoints
 
+### Health Check
+- `GET /health` - Server health status
+
 ### Authentication
-- `POST /api/auth/register` - Register new user
+- `POST /api/auth/register` - User registration
 - `POST /api/auth/login` - User login
-- `GET /api/auth/me` - Get current user info
-
-### Users (Admin/Support)
-- `GET /api/users` - List users with pagination
-- `PUT /api/users/:id` - Update user details
-
-### Platform Settings (Admin)
-- `GET /api/settings` - Get platform settings
-- `PUT /api/settings` - Update settings
-- `POST /api/settings/jackpot/draw` - Trigger jackpot draw
-
-### Jackpot
-- `GET /api/jackpot` - Get jackpot information
-- `POST /api/jackpot/enter` - Enter jackpot (premium only)
-
-### Coupons
-- `GET /api/coupons` - List available coupons
-- `POST /api/coupons/apply` - Apply for application-based coupons
-- `PUT /api/admin/coupons/:id` - Admin edit coupon
-
-### Sponsors
-- `GET /api/sponsors` - List sponsors
-- `POST /api/sponsors/apply` - Submit sponsor application
-
-### Advisory
-- `GET /api/advisors` - List advisors
-- `POST /api/advisory/requests` - Submit advisory request
-
-### Fundraising (Premium)
-- `POST /api/fundraising` - Submit fundraising request
-- `GET /api/fundraising/:id/messages` - Get fundraising messages
-- `POST /api/fundraising/:id/messages` - Send message
-
-### Opportunities
-- `GET /api/opportunities` - List opportunities
-- `GET /api/opportunities/:id` - Get opportunity details (premium)
-- `POST /api/opportunities/:id/nda` - Sign NDA
-- `POST /api/opportunities/:id/proposals` - Submit proposal
-- `GET /api/opportunities/:id/chat` - Get chat messages
-- `POST /api/opportunities/:id/chat` - Send chat message
-
-### Education
-- `GET /api/education` - List education content
-
-### Notifications
-- `GET /api/notifications` - List user notifications
-- `PUT /api/notifications/:id/read` - Mark notification as read
-
-### Billing (Stripe)
-- `GET /api/billing/subscription` - Get subscription info
-- `POST /api/billing/checkout` - Create checkout session
-- `POST /api/billing/cancel` - Cancel subscription
-
-### Affiliate
-- `GET /api/affiliate` - Get affiliate information
-- `POST /api/affiliate/convert-to-jackpot` - Convert payout to jackpot entry
-
-### Support Tickets
-- `GET /api/support/tickets` - List support tickets
-- `POST /api/support/tickets` - Create new ticket
-- `GET /api/support/tickets/:id/messages` - Get ticket messages
-- `POST /api/support/tickets/:id/messages` - Send message
-
-## User Roles & Permissions
-
-### Member (Free)
-- Can view most content
-- Cannot access premium features
-- Can submit basic applications
-
-### Member (Premium)
-- Full access to all features
-- Can enter jackpots, access opportunities, submit proposals
-- Can access sensitive deal information (with NDA)
-
-### Support
-- Can view/edit all data except platform settings
-- Cannot trigger jackpot draws
-- Full access to support tickets
-
-### Admin
-- Full system control
-- Can modify platform settings
-- Can trigger jackpot draws
-- Can manage all users and data
-
-## Development
-
-### Available Scripts
-
-- `npm start` - Start production server
-- `npm run dev` - Start development server with nodemon
-- `npm test` - Run tests
-
-### Project Structure
-
-```
-backend/
-├── config/
-│   └── database.js          # Database connection
-├── middleware/
-│   └── auth.js             # Authentication middleware
-├── routes/
-│   ├── auth.js             # Authentication routes
-│   ├── users.js            # User management
-│   ├── settings.js         # Platform settings
-│   ├── jackpot.js          # Jackpot system
-│   ├── coupons.js          # Coupon management
-│   ├── sponsors.js         # Sponsor applications
-│   ├── advisory.js         # Advisory marketplace
-│   ├── fundraising.js      # Fundraising requests
-│   ├── opportunities.js    # M&A/Service opportunities
-│   ├── education.js        # Education content
-│   ├── notifications.js    # User notifications
-│   ├── billing.js          # Stripe billing
-│   ├── affiliate.js        # Affiliate system
-│   └── support.js          # Support tickets
-├── server.js               # Main application file
-├── package.json            # Dependencies
-├── env.example            # Environment template
-└── README.md              # This file
-```
+- `GET /api/auth/me` - Get current user profile
+- `POST /api/auth/forgot-password` - Request password reset
+- `POST /api/auth/reset-password` - Reset password
+- `GET /api/auth/capabilities` - Get role capabilities
 
 ## Environment Variables
 
-See `env.example` for all required environment variables.
+See `env.example` for all required environment variables. Key variables include:
+- Database connection settings
+- JWT secrets and expiration
+- CORS origins
+- Server port and environment
 
-## Health Check
+## Error Handling
 
-The API includes a health check endpoint:
+The API uses consistent error response formats:
+```json
+{
+  "error": "ErrorType",
+  "message": "Human readable message",
+  "details": [] // Optional validation errors
+}
 ```
-GET /health
-```
-
-Returns server status, uptime, and timestamp.
-
-## Contributing
-
-1. Follow the existing code structure
-2. Implement proper error handling
-3. Add input validation for all endpoints
-4. Update this README for any new features
-5. Test your changes thoroughly
