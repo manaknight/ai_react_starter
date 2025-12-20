@@ -4,7 +4,8 @@
 - Use TypeScript.
 - Use React Router. KEEP ALL routes in `src/app/routes.tsx`
 - Always put source code in the src folder.
-- Pages belong in feature modules (not `src/pages/`). The main page route is defined in `routes.tsx`
+- Pages belong in pages (not `src/pages/`). The main page route is defined in `routes.tsx`. pages only have ui and call hooks and include components needed.
+- Any component with data manipulation should go into modules with folders for service, hooks, types
 - UPDATE routes and feature modules to include new components. OTHERWISE, the user can NOT see any components!
 - ALWAYS try to use the shadcn/ui library.
 - Tailwind CSS: always use Tailwind CSS for styling components. Utilize Tailwind classes extensively for layout, spacing, colors, and other design aspects.
@@ -35,6 +36,10 @@ src/
 │  ├─ App.tsx               # App wrapper + providers
 │  ├─ routes.tsx            # ALL routes defined here
 │  └─ providers.tsx         # Context providers
+├─ pages/                 # pages (VERY important)
+│  ├─ admin/
+│  ├─ member/
+│  ├─ public/
 ├─ modules/                 # Feature-based modules (VERY important)
 │  ├─ <feature module>/     # e.g., users, dashboard, products
 │  │  ├─ components/        # Feature components + PAGE components
@@ -43,14 +48,15 @@ src/
 │  │  ├─ types.ts          # Feature domain types
 │  │  └─ index.ts          # Feature exports
 ├─ shared/                  # Cross-feature reusable code
-│  ├─ components/          # Buttons, tables, modals, layouts
+│  ├─ components/          # Buttons, tables, modals,
+│  ├─ layouts              # Layout for the portals
 │  ├─ hooks/               # Generic hooks
 │  ├─ utils/               # Utility functions
 │  └─ constants/           # App constants
 ├─ context/                # Global state management
-│  ├─ AuthContext.tsx
-│  ├─ UIContext.tsx
-│  └─ DataContext.tsx      # Optional: service injection & caching
+│  ├─ AuthContext.tsx      # Context for auth
+│  ├─ UIContext.tsx        # Context for UI logic
+│  └─ DataContext.tsx      # Context for data states
 ├─ services/               # Global services
 │  ├─ api/
 │  │  ├─ client.ts         # axios/fetch wrapper
@@ -71,7 +77,7 @@ src/
 3. **Mock Data** (In `src/services/mock/`, export arrays/objects)
 4. **Mock Service Implementation** (In `src/modules/<feature>/services/`, implements interface using mock data)
 5. **Real API Implementation** (Same interface)
-6. **Runtime Service Switch** (One env flag: `VITE_USE_MOCK`)
+6. **Runtime Service Switch** (One env flag: `USE_MOCK` to switch between services and mock services)
 
 ## Component Guidelines
 
@@ -83,46 +89,66 @@ src/
 
 ### How to Add New Pages
 
-**❌ WRONG: Don't create pages in `src/pages/`**
-
-**✅ CORRECT: Pages belong in feature modules**
-
-1. **Create page component in feature module**
+1. **Add page under `src/pages/<role>` for UI design look**
    ```typescript
-   // src/modules/dashboard/components/DashboardPage.tsx
+   // src/pages/admin/DashboardPage.tsx
    export function DashboardPage() {
      return (
        <div>
          <h1>Dashboard</h1>
-         {/* Use components from shared/ or this feature module */}
+         {/* Focus on UI layout and design */}
+         {/* Use components from modules for data interactions */}
        </div>
      )
    }
    ```
 
-2. **Export page from feature module's index.ts**
+2. **Create components with data manipulation in modules**
+   - Create mocks, services, and hooks in the module
+   - Create types for the data structures
    ```typescript
-   // src/modules/dashboard/index.ts
-   export { DashboardPage } from "./components/DashboardPage"
-   export { useDashboardData } from "./hooks/useDashboardData"
-   // ... other exports
+   // src/modules/dashboard/
+   // - components/DashboardComponents.tsx (UI components)
+   // - services/dashboard.api.ts (API calls)
+   // - services/dashboard.mock.ts (mock data)
+   // - hooks/useDashboard.ts (data manipulation hooks)
+   // - types.ts (TypeScript types)
+   // - index.ts (exports)
    ```
 
-3. **Add route in `src/app/routes.tsx`**
+3. **In `src/pages/<role>/<Page>.tsx`, include components with interaction through hooks only**
    ```typescript
-   import { DashboardPage } from "../modules/dashboard"
+   // src/pages/admin/DashboardPage.tsx
+   import { DashboardChart, DashboardStats } from '../../modules/dashboard'
+   import { useDashboard } from '../../modules/dashboard'
+
+   export function DashboardPage() {
+     const { data, loading, error, refreshData } = useDashboard()
+
+     return (
+       <div>
+         <DashboardStats data={data.stats} />
+         <DashboardChart data={data.chart} onRefresh={refreshData} />
+       </div>
+     )
+   }
+   ```
+
+4. **Add route in `src/app/routes.tsx`**
+   ```typescript
+   import { DashboardPage } from "../pages/admin/DashboardPage"
 
    export const AppRoutes = () => (
      <Routes>
        <Route path="/" element={<Index />} />
-       <Route path="/dashboard" element={<DashboardPage />} />
+       <Route path="/admin/dashboard" element={<DashboardPage />} />
        {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
        <Route path="*" element={<NotFound />} />
      </Routes>
    )
    ```
 
-3. **UPDATE the main page (`src/pages/Index.tsx`) to include navigation** if needed
+5. **UPDATE the main page (`src/pages/Index.tsx`) to include navigation** if needed
 
 ### Where to Put Components
 
