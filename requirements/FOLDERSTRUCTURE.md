@@ -4,7 +4,7 @@ UI talks only to hooks
 
 Hooks talk only to services
 
-Services are swappable (mock ↔ real)
+Services use centralized endpoints + automatic mock/real switching
 
 Context owns global state & orchestration
 
@@ -40,12 +40,14 @@ src/
 │
 ├─ services/
 │  ├─ api/
-│  │  ├─ client.ts         # axios/fetch wrapper
-│  │  ├─ endpoints.ts      # url endpoints
-│  │  └─ adapters.ts       # transform api request
+│  │  ├─ client.ts         # Unified client (auto mock/real switch)
+│  │  ├─ clientFactory.ts  # Switches between mockApiClient & apiClient
+│  │  ├─ endpoints.ts      # ALL API endpoints centralized
+│  │  └─ mockClient.ts     # Mock API client implementation
 │  ├─ mock/
-│  │  └─ index.ts
-│  └─ index.ts
+│  │  ├─ handlerAdapter.ts # Routes ALL mock requests to handlers
+│  │  └─ mockDb.ts         # Centralized mock database
+│  └─ index.ts             # Service exports (auto mock/real)
 │
 ├─ types/
 │  └─ api.ts
@@ -62,7 +64,7 @@ useEffect(() => {
 ✅ Good (integration-safe)
 const { users, isLoading } = useUsers()
 
-When backend arrives → only useUsers + service changes.
+When backend arrives → only flip USE_MOCK env flag.
 
 1️⃣ Define Stable Domain Types (Never Change These)
 // modules/users/types.ts
@@ -89,57 +91,63 @@ export interface UserService {
 
 This is the single integration contract.
 
-3️⃣ Mock Implementation (Used Now)
-// modules/users/services/user.mock.ts
-import { UserService } from "./UserService"
-
-export const userMockService: UserService = {
-  async list() {
-    return [
-      { id: "1", name: "Alice", email: "a@test.com", role: "admin" },
-      { id: "2", name: "Bob", email: "b@test.com", role: "member" },
-    ]
-  },
-
-  async get(id) {
-    return { id, name: "Alice", email: "a@test.com", role: "admin" }
-  },
-
-  async create(input) {
-    return { id: crypto.randomUUID(), ...input } as any
-  },
-}
-
-4️⃣ Real API Implementation (Later, Same Shape)
+3️⃣ Unified API Implementation (Works for both mock & real)
 // modules/users/services/user.api.ts
 import { apiClient } from "@/services/api/client"
+import { endpoints } from "@/services/api/endpoints"
 import { UserService } from "./UserService"
 
 export const userApiService: UserService = {
   async list() {
-    const res = await apiClient.get("/users")
+    const res = await apiClient.get(endpoints.users.list)
     return res.data
   },
 
   async get(id) {
-    return apiClient.get(`/users/${id}`).then(r => r.data)
+    const res = await apiClient.get(endpoints.users.get(id))
+    return res
   },
 
   async create(input) {
-    return apiClient.post("/users", input).then(r => r.data)
+    const res = await apiClient.post(endpoints.users.create, input)
+    return res
   },
 }
 
-5️⃣ Runtime Service Switch (🔥 Critical)
-// services/index.ts
-import { userMockService } from "@/modules/users/services/user.mock"
-import { userApiService } from "@/modules/users/services/user.api"
+5 Centralized Endpoints (🔥 Single source of truth)
+// services/api/endpoints.ts
+export const endpoints = {
+  users: {
+    list: "/api/users",
+    get: (id: string) => `/api/users/${id}`,
+    create: "/api/users",
+    update: (id: string) => `/api/users/${id}`,
+    delete: (id: string) => `/api/users/${id}`,
+  },
+  // ... all other endpoints
+}
 
+6 Centralized Mock Handling (🔥 All mocks in one place)
+// services/mock/handlerAdapter.ts
+export const handlerAdapters = {
+  "/api/users": async (url, method, data) => {
+    if (method === 'GET') return mockDb.users;
+    if (method === 'POST') {
+      const newUser = { id: Date.now(), ...data };
+      mockDb.users.push(newUser);
+      return newUser;
+    }
+  },
+  // ... all other mock handlers
+}
+
+7 Automatic Mock/Real Switching (🔥 No manual switching)
+// services/api/client.ts (via clientFactory)
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === "true"
+export const apiClient = USE_MOCK ? mockApiClient : realApiClient
 
-export const userService = USE_MOCK
-  ? userMockService
-  : userApiService
+// services/index.ts
+export { userApiService as userService } from "@/modules/users/services/user.api"
 
 
 🧠 Integration = flipping ONE env flag
@@ -182,7 +190,7 @@ export function UserTable() {
 
 ✅ No API knowledge
 ✅ No mock knowledge
-✅ No refactor later
+✅ No refactor ever (services auto-switch mock/real)
 
 🧠 Context API: What Goes There vs What Doesn’t
 ✅ Context is for:
@@ -237,14 +245,26 @@ API shape change = adapter only
 
 Mock updates don’t touch UI
 
+Easy to migrate to:
+
+React Query
+
+TanStack Router
+
+SSR
+
+Micro-frontends
+
 Golden Rules
 
-Components → Hooks → Services → API
+Components → Hooks → Services → Centralized Client
 
 One interface per domain
 
-Mock & real share the same contract
+Services use centralized endpoints.ts
 
-Env flag controls backend
+Client auto-switches mock/real via env flag
+
+Mock logic centralized in handlerAdapter.ts
 
 UI never imports API or mock files

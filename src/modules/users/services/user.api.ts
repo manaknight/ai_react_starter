@@ -1,31 +1,33 @@
-import { apiClient } from '../../../services/api/client';
-import { API_ENDPOINTS } from '../../../services/api/endpoints';
+import { clientFactory } from '../../../services/api/clientFactory';
+import { endpoints } from '../../../services/api/endpoints';
 import { adaptUserFromAPI, adaptUserToAPI } from '../../../services/api/adapters';
 import { UserService } from './UserService';
 import { User, CreateUserInput } from '../types';
 
+const client = clientFactory();
+
 export const userApiService: UserService = {
   async list(): Promise<User[]> {
-    const response = await apiClient.get(API_ENDPOINTS.USERS);
+    const response = await client.get(endpoints.users.list);
     return response.data.map(adaptUserFromAPI);
   },
 
   async get(id: string): Promise<User> {
-    const response = await apiClient.get(`${API_ENDPOINTS.USERS}/${id}`);
+    const response = await client.get(endpoints.users.get(id));
     return adaptUserFromAPI(response.data);
   },
 
   async create(input: CreateUserInput): Promise<User> {
-    const response = await apiClient.post(API_ENDPOINTS.USERS, adaptUserToAPI(input));
+    const response = await client.post(endpoints.users.create, adaptUserToAPI(input));
     return adaptUserFromAPI(response.data);
   },
 
   async update(id: string, input: Partial<CreateUserInput>): Promise<User> {
-    const response = await apiClient.put(`${API_ENDPOINTS.USERS}/${id}`, adaptUserToAPI(input));
+    const response = await client.put(endpoints.users.update(id), adaptUserToAPI(input));
     return adaptUserFromAPI(response.data);
   },
 
   async delete(id: string): Promise<void> {
-    await apiClient.delete(`${API_ENDPOINTS.USERS}/${id}`);
+    await client.delete(endpoints.users.delete(id));
   },
 };

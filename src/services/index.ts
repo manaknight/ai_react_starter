@@ -1,6 +1,4 @@
-import { userMockService } from '../modules/users/services/user.mock';
-import { userApiService } from '../modules/users/services/user.api';
+// Unified service exports - mock/real switching handled by clientFactory
+// All services use the same client which automatically switches based on VITE_USE_MOCK env flag
 
-const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
-
-export const userService = USE_MOCK ? userMockService : userApiService;
+export { userApiService as userService } from '@/modules/users/services/user.api';
