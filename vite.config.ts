@@ -14,4 +14,8 @@ export default defineConfig(() => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  define: {
+    // Build-time elimination of mocks - completely tree-shaken in production
+    __USE_MOCK__: process.env.VITE_USE_MOCK === "true" && process.env.NODE_ENV === "development",
+  },
 }));
