@@ -79,10 +79,11 @@ src/
 2. **Centralized API Endpoints** (In `src/services/api/endpoints.ts`, ALL API endpoints defined here)
 3. **Create Service Interface** (Single contract in `src/modules/<feature>/services/`)
 4. **Centralized Mock Database** (In `src/services/mock/mockDb.ts`, shared across features)
-5. **Mock Request Handlers** (In `src/services/mock/handlerAdapter.ts`, routes requests & handles business logic)
-6. **Mock Service Implementation** (In `src/modules/<feature>/services/`, implements interface using mock handlers)
-7. **Real API Implementation** (Same interface, uses `src/services/api/client.ts`)
-8. **Unified Client Switch** (`src/services/api/clientFactory.ts` switches between mock/real based on env flag)
+5. **Mock Request Handlers** (In `src/services/mock/handlerAdapter.ts`, routes ALL requests & handles business logic)
+6. **Real API Implementation** (Uses `clientFactory()` which auto-switches mock/real based on `VITE_USE_MOCK`)
+7. **Unified Service Exports** (In `src/services/index.ts`, exports services that use centralized client)
+
+**Key: No separate mock implementations in modules - all mock logic centralized!**
 
 ## Component Guidelines
 
@@ -115,8 +116,7 @@ src/
    // src/modules/dashboard/
    // - components/DashboardComponents.tsx (UI components)
    // - services/DashboardService.ts (service interface)
-   // - services/dashboard.api.ts (real API implementation)
-   // - services/dashboard.mock.ts (delegates to centralized handlerAdapter)
+   // - services/dashboard.api.ts (uses clientFactory() - auto mock/real switching)
    // - hooks/useDashboard.ts (data manipulation hooks)
    // - types.ts (TypeScript types)
    // - index.ts (exports)
@@ -214,8 +214,7 @@ src/modules/users/
 │  └─ useUserForm.ts    # Form logic + userService
 ├─ services/
 │  ├─ UserService.ts    # Service interface
-│  ├─ user.mock.ts      # Mock implementation (delegates to handlerAdapter)
-│  └─ user.api.ts       # Real API implementation (uses centralized client)
+│  └─ user.api.ts       # Implementation using clientFactory() (auto mock/real)
 ├─ types.ts             # User, UserRole, etc.
 └─ index.ts             # export { UsersPage, useUsers, UserTable, ... }
 ```
@@ -258,23 +257,25 @@ This is the single integration contract.
 
 3️⃣ Unified API Implementation (Works for both mock & real)
 // modules/users/services/user.api.ts
-import { apiClient } from "@/services/api/client"
+import { clientFactory } from "@/services/api/clientFactory"
 import { endpoints } from "@/services/api/endpoints"
 import { UserService } from "./UserService"
 
+const client = clientFactory(); // Auto-switches mock/real based on VITE_USE_MOCK
+
 export const userApiService: UserService = {
   async list() {
-    const res = await apiClient.get(endpoints.users.list)
+    const res = await client.get(endpoints.users.list)
     return res.data
   },
 
   async get(id) {
-    const res = await apiClient.get(endpoints.users.get(id))
+    const res = await client.get(endpoints.users.get(id))
     return res
   },
 
   async create(input) {
-    const res = await apiClient.post(endpoints.users.create, input)
+    const res = await client.post(endpoints.users.create, input)
     return res
   },
 }
@@ -306,10 +307,14 @@ export const handlerAdapters = {
   // ... all other mock handlers
 }
 
-6️⃣ Automatic Mock/Real Switching (🔥 NEW: No manual switching)
-// services/api/client.ts (via clientFactory)
-const USE_MOCK = import.meta.env.VITE_USE_MOCK === "true"
-export const apiClient = USE_MOCK ? mockApiClient : realApiClient
+6️⃣ Automatic Mock/Real Switching
+// services/api/clientFactory.ts
+export const clientFactory = () => {
+  if (env.USE_MOCK) {
+    return mockApiClient; // Centralized mock client
+  }
+  return realApiClient;   // Real API client
+}
 
 // services/index.ts
 export { userApiService as userService } from "@/modules/users/services/user.api"
@@ -373,11 +378,12 @@ export function UserTable() {
 
 ## Golden Rules
 
-- Components → Hooks → Services → API
+- Components → Hooks → Services → clientFactory() → Centralized Client
 - One interface per domain
-- Mock & real share the same contract
-- Env flag controls backend
+- Services use clientFactory() which auto-switches mock/real
+- Env flag controls backend via clientFactory
 - UI never imports API or mock files
+- All mock logic centralized in handlerAdapter.ts
 
 ## AI Prompt for Building Screens
 
