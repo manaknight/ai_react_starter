@@ -49,7 +49,7 @@ FRONTEND_URL=http://localhost:5173
 DB_HOST=localhost
 DB_USER=root
 DB_PASSWORD=your_password_here
-DB_NAME=manda_club
+DB_NAME=project
 DB_PORT=3306
 
 # JWT Configuration

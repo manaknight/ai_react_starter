@@ -12,7 +12,7 @@ async function runSQL() {
       host: process.env.DB_HOST || 'localhost',
       user: process.env.DB_USER || 'root',
       password: process.env.DB_PASSWORD || '',
-      database: process.env.DB_NAME || 'manda_club',
+      database: process.env.DB_NAME || 'project',
       port: process.env.DB_PORT || 3306,
       multipleStatements: true,
       ssl: {

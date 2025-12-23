@@ -1,10 +1,12 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { apiClient } from '@/services/api/clientFactory';
 
 interface User {
   id: string;
   name: string;
   email: string;
   role: 'admin' | 'member';
+  is_premium: boolean;
 }
 
 interface AuthContextType {
@@ -41,17 +43,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (email: string, password: string) => {
     setLoading(true);
     try {
-      // Mock login - replace with real API call
-      const mockUser: User = {
-        id: '1',
-        name: 'User',
-        email: email,
-        role: 'member'
-      };
-      setUser(mockUser);
-      localStorage.setItem('user', JSON.stringify(mockUser));
+      const response = await apiClient.authPost('/auth/login', { email, password });
+      const { user, token } = response;
+      setUser(user);
+      localStorage.setItem('user', JSON.stringify(user));
+      localStorage.setItem('token', token);
     } catch (error) {
-      throw new Error('Login failed');
+      throw new Error(error instanceof Error ? error.message : 'Login failed');
     } finally {
       setLoading(false);
     }
@@ -60,6 +58,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = () => {
     setUser(null);
     localStorage.removeItem('user');
+    localStorage.removeItem('token');
   };
 
   const value = {

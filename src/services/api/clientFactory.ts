@@ -1,17 +1,3 @@
-// 🔥 Build-time elimination: mocks are completely tree-shaken in production
-// Build-time conditional compilation eliminates mock code entirely in production
-
-// Declare build-time constant (defined in vite.config.ts)
-declare const __USE_MOCK__: boolean;
-
-// Build-time conditional: mock client is only imported when __USE_MOCK__ is true
-let mockApiClient: any = null;
-if (__USE_MOCK__) {
-  // This entire block is tree-shaken away in production builds
-  import("./mockClient").then(module => {
-    mockApiClient = module.mockApiClient;
-  });
-}
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:3001";
 
@@ -152,15 +138,5 @@ const realApiClient = {
   },
 };
 
-// Build-time conditional client factory - maintains synchronous API
-export const clientFactory = () => {
-  // Build-time replacement: when __USE_MOCK__ is false, this entire if block is tree-shaken
-  if (__USE_MOCK__) {
-    // Return cached mock client or fallback to real client while loading
-    return mockApiClient || realApiClient;
-  }
-  return realApiClient;
-};
-
-// For synchronous access, export the resolved client
+// Export the API client directly
 export const apiClient = realApiClient;
