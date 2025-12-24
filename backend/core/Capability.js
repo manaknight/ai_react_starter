@@ -1,47 +1,38 @@
 // Role-based capabilities configuration
-// Admin can do anything
-const capabilities = {
-  admin: {
-    can: ['*'],
-  },
-  member: {
-    can: [
-      // Support tickets
-      'support:tickets:read',
-      'support:tickets:create',
-      'support:messages:read',
-      'support:messages:create',
-    ],
-  },
-
+// Maps roles to their allowed capabilities
+const CAPABILITIES = {
+  member: ['profile:read', 'profile:write'],
+  admin: ['users:read', 'users:write', 'system:read'],
+  superadmin: ['*'] // All capabilities
 };
 
 // Check if a role has a specific capability
 const hasCapability = (role, capability) => {
-  if (!capabilities[role]) {
+  const roleCapabilities = CAPABILITIES[role?.toLowerCase()];
+  if (!roleCapabilities) {
     return false;
   }
 
-  // Admin can do anything
-  if (capabilities[role].can.includes('*')) {
+  // SuperAdmin can do anything
+  if (roleCapabilities.includes('*')) {
     return true;
   }
 
-  return capabilities[role].can.includes(capability);
+  return roleCapabilities.includes(capability);
 };
 
 // Get capabilities for a role
 const getCapabilities = (role) => {
-  return capabilities[role] || { can: [] };
+  return CAPABILITIES[role?.toLowerCase()] || [];
 };
 
-// Get all defined capabilities
+// Get all defined capabilities mapping
 const getAllCapabilities = () => {
-  return capabilities;
+  return CAPABILITIES;
 };
 
 module.exports = {
-  capabilities,
+  CAPABILITIES,
   hasCapability,
   getCapabilities,
   getAllCapabilities,

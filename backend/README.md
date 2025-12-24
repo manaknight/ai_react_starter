@@ -12,6 +12,251 @@ The backend follows a modular architecture with:
 - **Modular routing** system
 - **Service layer** for business logic
 
+## 🔀 2025 Route Definition Patterns
+
+### New Route Structure
+Routes are now defined as arrays of configuration objects with Zod validation, automatic mock/real switching, and capability-based authorization.
+
+### Standard Route Structure
+```javascript
+module.exports = [
+  {
+    path: '/resource',           // URL path (relative to project)
+    method: 'GET',               // HTTP method
+    capability: 'resource:read', // Required permission
+    schema: ResponseSchema,      // Zod validation schema
+    requestSchema: {             // Optional request validation
+      body: BodySchema,
+      query: QuerySchema,
+      params: ParamsSchema
+    },
+    mock: (req) => {             // Mock implementation
+      return MockDataService.list(() => MockDataService.resource(), 5);
+    },
+    real: async (req, db) => {   // Real database implementation
+      return await db.find('resource');
+    },
+    noAuth: false,               // Skip authentication (default: false)
+    forceMock: false,            // Always use mock (default: false)
+    delay: 0                     // Custom mock delay override
+  }
+];
+```
+
+### AutoCRUD Route Structure (2025 Vision)
+```javascript
+{
+  resource: 'orders',           // Resource name (plural)
+  schema: OrderSchema,          // Zod response schema
+  capabilities: {               // CRUD capabilities
+    list: 'orders:read',
+    create: 'orders:write',
+    read: 'orders:read',
+    update: 'orders:write',
+    delete: 'orders:write'
+  },
+  hooks: {                      // Lifecycle hooks (optional)
+    beforeCreate: async (data, context) => { /* validation */ },
+    afterCreate: async (result, context) => { /* notifications */ }
+  }
+}
+// Auto-generates: GET /orders, POST /orders, GET /orders/:id, PATCH /orders/:id, DELETE /orders/:id
+```
+
+### Zod Schema Patterns
+
+#### Response Schemas
+```javascript
+const UserSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1),
+  email: z.string().email(),
+  role: z.enum(['Member', 'Admin', 'SuperAdmin']),
+  avatar: z.string().url().optional(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime().optional()
+});
+
+const UserListSchema = z.array(UserSchema);
+```
+
+#### Request Validation Schemas
+```javascript
+const CreateUserSchema = z.object({
+  name: z.string().min(2).max(100),
+  email: z.string().email(),
+  role: z.enum(['Member', 'Admin']).optional().default('Member')
+});
+
+requestSchema: {
+  body: CreateUserSchema,
+  query: z.object({
+    page: z.string().regex(/^\d+$/).transform(Number).optional(),
+    limit: z.string().regex(/^\d+$/).transform(Number).optional()
+  }),
+  params: z.object({
+    id: z.string().uuid()
+  })
+}
+```
+
+### Authentication & Authorization
+
+#### JWT Authentication
+- **Header**: `Authorization: Bearer <token>`
+- **Verification**: Automatic via `auth.verifyToken` middleware
+- **User Object**: `req.user = { id, email, role, status, tenantId, is_premium }`
+
+#### Capability-Based Authorization
+```javascript
+// Route-level capability check
+capability: 'users:read'
+
+// Middleware usage
+const { requireCapability } = require('../middleware/capability');
+router.get('/users', requireCapability('users:read'), handler);
+```
+
+#### Role-Based Access
+```javascript
+const auth = require('../middleware/auth');
+
+// Common patterns
+auth.requireMember       // Member, Admin, Support
+auth.requireAdmin        // Admin only (tenant-scoped)
+auth.requireSuperAdmin   // SuperAdmin only (global)
+auth.requirePremiumMember // Premium members only
+```
+
+#### Capability Mapping
+```javascript
+// From core/Capability.js
+const CAPABILITIES = {
+  member: ['profile:read', 'profile:write'],
+  admin: ['users:read', 'users:write', 'system:read'],
+  superadmin: ['*'] // All capabilities
+};
+```
+
+### Database Patterns
+
+#### Standard Operations
+```javascript
+// Find records
+const users = await db.find('users', {
+  where: { role: 'Admin', status: 'active' },
+  orderBy: { createdAt: 'desc' },
+  limit: 10,
+  offset: 20,
+  select: ['id', 'name', 'email']
+});
+
+// Find single record
+const user = await db.findOne('users', {
+  where: { id: userId }
+});
+
+// Create record
+const newUser = await db.insert('users', {
+  name: 'John Doe',
+  email: 'john@example.com',
+  role: 'Member'
+});
+
+// Update record
+const updatedUser = await db.update('users', {
+  where: { id: userId },
+  data: { name: 'Jane Doe' }
+});
+
+// Delete record
+const deletedCount = await db.delete('users', {
+  where: { id: userId }
+});
+```
+
+#### Tenant-Aware Database Access
+```javascript
+// In project routes, 'db' parameter is auto-namespaced
+real: async (req, db) => {
+  // db.find('users') automatically queries 'projectId_users'
+  return await db.find('users');
+}
+```
+
+### Mock Data Patterns
+
+#### MockDataService Usage
+```javascript
+const MockDataService = require('../services/MockDataService');
+
+// Generate single entity
+const user = MockDataService.user(); // { id, name, email, ... }
+
+// Generate list
+const users = MockDataService.list(() => MockDataService.user(), 5);
+
+// Persist in memory (for stateful mocks)
+const savedUser = MockDataService.persist('users', userData);
+
+// Retrieve from memory
+const storedUsers = MockDataService.findAll('users');
+const user = MockDataService.findById('users', userId);
+```
+
+#### Mock Implementation Examples
+```javascript
+// List with seeding
+mock: () => {
+  const stored = MockDataService.findAll('products');
+  if (stored.length === 0) {
+    const seeded = MockDataService.list(() => MockDataService.product(), 5);
+    seeded.forEach(p => MockDataService.persist('products', p));
+    return seeded;
+  }
+  return stored;
+}
+
+// Single entity with fallback
+mock: (req) => {
+  const product = MockDataService.findById('products', req.params.id);
+  return product || MockDataService.product(req.params.id);
+}
+
+// Create with merge
+mock: (req) => {
+  const newProduct = {
+    ...MockDataService.product(),
+    ...req.body,
+    createdAt: new Date().toISOString()
+  };
+  return MockDataService.persist('products', newProduct);
+}
+```
+
+### Import Patterns
+
+#### Conditional Database Imports
+```javascript
+// Always use this pattern to avoid import errors in mock mode
+let DatabaseService;
+if (process.env.MOCK_MODE !== 'true') {
+  DatabaseService = require('../services/DatabaseService');
+}
+const MockDataService = require('../services/MockDataService');
+```
+
+#### Path Patterns by Location
+```javascript
+// In root routes/ directory
+const DatabaseService = require('../services/DatabaseService');
+const MockDataService = require('../services/MockDataService');
+
+// In projects/[projectId]/routes/ directory
+const DatabaseService = require('../../../services/DatabaseService');
+const MockDataService = require('../../../services/MockDataService');
+```
+
 ## How to Install
 
 ### Prerequisites
@@ -82,111 +327,125 @@ The server will start on `http://localhost:3001` with a health check endpoint at
 
 ## How to Add New Routes
 
-### Route Structure
-Routes are organized in the `routes/` directory. Each route file exports an Express router.
+### 2025 Route Definition Pattern
+Routes are now defined using the new 2025 pattern with automatic validation, mock/real switching, and capability-based authorization.
 
 ### Example: Creating a new route file
 
-1. **Create a new route file** (e.g., `routes/products.js`):
+1. **Create Zod schemas** (e.g., `routes/schemas/products.js`):
 ```javascript
-const express = require('express');
-const { body, validationResult } = require('express-validator');
-const DatabaseService = require('../services/DatabaseService');
-const auth = require('../middleware/auth');
+const { z } = require('zod');
 
-const router = express.Router();
-
-// GET /api/products - Get all products (public)
-router.get('/', async (req, res) => {
-  try {
-    const products = await DatabaseService.find('products');
-    res.json(products);
-  } catch (error) {
-    res.status(500).json({
-      error: 'Failed to fetch products',
-      message: error.message
-    });
-  }
+const ProductSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1),
+  price: z.number().positive(),
+  description: z.string().optional(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime()
 });
 
-// POST /api/products - Create new product (authenticated users only)
-router.post('/', auth.verifyToken, [
-  body('name').trim().isLength({ min: 1 }),
-  body('price').isNumeric()
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        error: 'Validation failed',
-        details: errors.array()
-      });
-    }
-
-    const { name, price, description } = req.body;
-
-    const result = await DatabaseService.insert('products', {
-      name,
-      price,
-      description,
-      created_by: req.user.id
-    });
-
-    res.status(201).json(result);
-  } catch (error) {
-    res.status(500).json({
-      error: 'Failed to create product',
-      message: error.message
-    });
-  }
+const CreateProductSchema = z.object({
+  name: z.string().min(2).max(100),
+  price: z.number().min(0),
+  description: z.string().optional()
 });
 
-// PUT /api/products/:id - Update product (admin only)
-router.put('/:id', auth.requireAdmin, [
-  body('name').optional().trim().isLength({ min: 1 }),
-  body('price').optional().isNumeric()
-], async (req, res) => {
-  try {
-    const { id } = req.params;
-    const updates = req.body;
-
-    const result = await DatabaseService.update('products', updates, {
-      where: { id }
-    });
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({
-        error: 'Product not found'
-      });
-    }
-
-    res.json({ message: 'Product updated successfully' });
-  } catch (error) {
-    res.status(500).json({
-      error: 'Failed to update product',
-      message: error.message
-    });
-  }
-});
-
-module.exports = router;
+module.exports = {
+  ProductSchema,
+  CreateProductSchema
+};
 ```
 
-2. **Register the route in `server.js`:**
+2. **Create route definitions** (e.g., `routes/products.routes.js`):
 ```javascript
-// In server.js, add after the auth routes import:
-// const productRoutes = require('./routes/products');
+// Conditional Database Imports
+let DatabaseService;
+if (process.env.MOCK_MODE !== 'true') {
+  DatabaseService = require('../services/DatabaseService');
+}
+const MockDataService = require('../services/MockDataService');
 
-// And add to the API routes section:
-// app.use('/api/products', productRoutes);
+// Import schemas
+const { ProductSchema, CreateProductSchema } = require('./schemas/products');
+
+module.exports = [
+  // GET /api/products - List products
+  {
+    path: '/products',
+    method: 'GET',
+    capability: 'products:read',
+    schema: z.array(ProductSchema),
+    mock: () => {
+      const products = MockDataService.findAll('products');
+      return products.length > 0 ? products : MockDataService.list(() => MockDataService.product(), 5);
+    },
+    real: async (req, db) => {
+      return await db.find('products');
+    }
+  },
+
+  // POST /api/products - Create product
+  {
+    path: '/products',
+    method: 'POST',
+    capability: 'products:write',
+    schema: ProductSchema,
+    requestSchema: { body: CreateProductSchema },
+    mock: (req) => {
+      const newProduct = {
+        id: require('crypto').randomUUID(),
+        ...req.body,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      return MockDataService.persist('products', newProduct);
+    },
+    real: async (req, db) => {
+      return await db.insert('products', {
+        ...req.body,
+        created_by: req.user.id
+      });
+    }
+  },
+
+  // GET /api/products/:id - Get single product
+  {
+    path: '/products/:id',
+    method: 'GET',
+    capability: 'products:read',
+    schema: ProductSchema,
+    mock: (req) => {
+      const product = MockDataService.findById('products', req.params.id);
+      if (!product) throw new Error('Product not found');
+      return product;
+    },
+    real: async (req, db) => {
+      const product = await db.findOne('products', {
+        where: { id: req.params.id }
+      });
+      if (!product) throw new Error('Product not found');
+      return product;
+    }
+  }
+];
+```
+
+3. **Register routes in `server.js`:**
+```javascript
+// Import route definitions
+const productRouteDefinitions = require('./routes/products.routes');
+
+// Register with RouteProcessor
+routeProcessor.processRoutes(productRouteDefinitions, '/api');
 ```
 
 ### Route Best Practices
-- Use Express Validator for input validation
-- Include proper error handling with try/catch blocks
-- Use authentication middleware when needed
-- Return consistent JSON response formats
-- Use HTTP status codes appropriately
+- Use Zod schemas for type-safe validation
+- Implement both mock and real handlers
+- Use capability-based authorization
+- Include proper error handling (errors are automatically handled)
+- Follow the established patterns for consistency
 
 ## How to Add New Services
 
@@ -455,13 +714,15 @@ node run-sql.js
 ### Health Check
 - `GET /health` - Server health status
 
-### Authentication
-- `POST /api/auth/register` - User registration
-- `POST /api/auth/login` - User login
-- `GET /api/auth/me` - Get current user profile
-- `POST /api/auth/forgot-password` - Request password reset
-- `POST /api/auth/reset-password` - Reset password
-- `GET /api/auth/capabilities` - Get role capabilities
+### Authentication (2025 Route Pattern)
+All auth endpoints now use Zod validation, automatic mock/real switching, and capability-based authorization:
+
+- `POST /api/auth/register` - User registration (public)
+- `POST /api/auth/login` - User login (public)
+- `GET /api/auth/me` - Get current user profile (requires `profile:read`)
+- `POST /api/auth/forgot-password` - Request password reset (public)
+- `POST /api/auth/reset-password` - Reset password (public)
+- `GET /api/auth/capabilities` - Get role capabilities (public)
 
 ## Environment Variables
 

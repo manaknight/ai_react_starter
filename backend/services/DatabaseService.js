@@ -583,6 +583,44 @@ const DatabaseService = {
   },
 
   // =============================================================================
+  // CONVENIENCE METHODS (2025 Patterns)
+  // =============================================================================
+
+  /**
+   * Standard operations with unified interface (2025 patterns)
+   * @param {string} tableName - Table name
+   * @param {Object} options - Operation options
+   * @returns {Promise<Object>} - Operation result
+   */
+
+  // Standard find with pattern matching
+  findRecords: async (tableName, options = {}) => {
+    return await DatabaseService.find(tableName, options);
+  },
+
+  // Standard findOne with pattern matching
+  findRecord: async (tableName, options = {}) => {
+    return await DatabaseService.findOne(tableName, options);
+  },
+
+  // Standard create with pattern matching
+  createRecord: async (tableName, data) => {
+    return await DatabaseService.insert(tableName, data);
+  },
+
+  // Standard update with pattern matching
+  updateRecord: async (tableName, options = {}) => {
+    const { where, data } = options;
+    return await DatabaseService.update(tableName, data, where);
+  },
+
+  // Standard delete with pattern matching
+  deleteRecord: async (tableName, options = {}) => {
+    const { where } = options;
+    return await DatabaseService.delete(tableName, where);
+  },
+
+  // =============================================================================
   // PRIVATE UTILITY METHODS
   // =============================================================================
 

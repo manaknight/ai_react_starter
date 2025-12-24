@@ -4,15 +4,19 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const DatabaseService = require('./services/DatabaseService');
+const RouteProcessor = require('./services/RouteProcessor');
 const namespace = process.env.NAMESPACE || 'project';
-// Import routes
-// const authRoutes = require('./routes/auth');
+// Import new route definitions
+const authRouteDefinitions = require('./routes/auth.routes');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Initialize Database Service with namespace
 DatabaseService.setNamespace(namespace);
+
+// Initialize Route Processor
+const routeProcessor = new RouteProcessor(app);
 
 // Security middleware
 app.use(helmet());
@@ -66,8 +70,8 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API routes
-// app.use('/api/auth', authRoutes);
+// API routes - New 2025 Route Definition Pattern
+routeProcessor.processRoutes(authRouteDefinitions, '/api/auth');
 
 // 404 handler
 app.use('*', (req, res) => {

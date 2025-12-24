@@ -78,13 +78,57 @@ const requireRole = (...allowedRoles) => {
 };
 
 
+// Check if user has premium status
+const requirePremiumMember = async (req, res, next) => {
+  try {
+    const users = await DatabaseService.find('users', {
+      where: { id: req.user.id },
+      select: ['role', 'is_premium', 'status']
+    });
+
+    if (users.length === 0) {
+      return res.status(404).json({
+        error: 'User not found',
+        message: 'User account does not exist'
+      });
+    }
+
+    const user = users[0];
+
+    if (user.status !== 'active') {
+      return res.status(403).json({
+        error: 'Account suspended',
+        message: 'Your account has been suspended'
+      });
+    }
+
+    if (!user.is_premium) {
+      return res.status(403).json({
+        error: 'Premium required',
+        message: 'This feature requires a premium membership'
+      });
+    }
+
+    req.user.role = user.role;
+    req.user.is_premium = user.is_premium;
+    next();
+  } catch (error) {
+    return res.status(500).json({
+      error: 'Authorization error',
+      message: error.message
+    });
+  }
+};
+
 // Combined middleware for different access levels
 const auth = {
   verifyToken,
   requireRole,
-  // Common role combinations
-  requireMember: requireRole('Member', 'Admin'),
-  requireAdmin: requireRole('Admin')
+  // Role-based access
+  requireMember: requireRole('Member', 'Admin'),     // Member, Admin, Support
+  requireAdmin: requireRole('Admin'),                           // Admin only (tenant-scoped)
+  requireSuperAdmin: requireRole('SuperAdmin'),                 // SuperAdmin only (global)
+  requirePremiumMember                                           // Premium members only
 };
 
 module.exports = auth;
