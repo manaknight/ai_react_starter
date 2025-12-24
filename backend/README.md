@@ -132,9 +132,15 @@ auth.requirePremiumMember // Premium members only
 ```javascript
 // From core/Capability.js
 const CAPABILITIES = {
-  member: ['profile:read', 'profile:write'],
-  admin: ['users:read', 'users:write', 'system:read'],
-  superadmin: ['*'] // All capabilities
+  member: {
+    can: ['profile:read', 'profile:write']
+  },
+  admin: {
+    can: ['users:read', 'users:write', 'system:read']
+  },
+  superadmin: {
+    can: ['*'] // All capabilities
+  }
 };
 ```
 
